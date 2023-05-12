@@ -1,7 +1,7 @@
 **Environmental Determinants of Cardiovascular Disease**
 Group 1
 
-Purpose: This project contains the scripts required to run the code to generate the statistical inferences from biobank collection to analysis. 
+Purpose: This project contains the analytical pipeline to generate the statistical inferences in the research project.
 
 Pre-processing is performed in the preprocessing.Rmd file followed by analysis in analysis.Rmd. 
 
