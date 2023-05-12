@@ -1,6 +1,6 @@
 Group 1: **Environmental Determinants of Cardiovascular Disease**
 
-Purpose: This project contains the analytical pipeline to generate the statistical inferences in the research project.
+This project contains the analytical pipeline to generate the statistical inferences in the research project.
 
 Pre-processing is performed in the preprocessing.Rmd file followed by analysis in analysis.Rmd. 
 
