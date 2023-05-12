@@ -1,5 +1,4 @@
-**Environmental Determinants of Cardiovascular Disease**
-Group 1
+Group 1: **Environmental Determinants of Cardiovascular Disease**
 
 Purpose: This project contains the analytical pipeline to generate the statistical inferences in the research project.
 
