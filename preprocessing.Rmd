@@ -1,0 +1,831 @@
+---
+title: "CVD Project"
+author: "Group 1"
+date: "08/05/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Setup
+
+```{r libraries}
+library(dplyr)
+library(tibble)
+library(ggplot2)
+library(gtsummary)
+library(lubridate)
+library(bstfun)
+library(stringr)
+library(polycor)
+library(pheatmap)
+library(plyr)
+library(caret)
+```
+
+### Loading in predictors and outcome data
+
+```{r setup_pred1_out}
+
+SENSITIVITY = TRUE
+
+# Loading predictor variables (in two parts)
+data_vars1 <- readRDS("/rds/general/user/dba22/home/tds/Group1/tds-proj/processing_files/extraction_and_recoding/outputs/ukb_extracted.rds")
+data_vars2 <- readRDS("/rds/general/project/hda-22-23/live/TDS/Group1/tds-proj/processing_files/extraction_and_recoding/outputs.diet/ukb_extracted.rds") %>% dplyr::select(ends_with(".0.0"))
+data <- cbind(data_vars1, data_vars2)
+
+#data <- data[1:1000, ] # 1000 rows for testing
+
+# Loading outcome variables
+if(SENSITIVITY) {
+  outcomes_cvd <- readRDS("/rds/general/user/dba22/home/tds/Group1/tds-proj/processing_files/outcomes_separated/cvd/Outputs/output_final.rds")
+} else {
+  outcomes_cvd <- readRDS("/rds/general/user/dba22/home/tds/Group1/tds-proj/processing_files/outcome_definition/Outputs/output_final.rds")
+}
+
+outcomes_cvd_usefulcols <- outcomes_cvd %>% dplyr::select(eid, prevalent_case, incident_case, case, date_recr, date_diagnosis, time_to_diagnosis, date_death)
+
+# Removing prevalent cases
+outcomes_cvd_noprev <- outcomes_cvd_usefulcols %>% filter(prevalent_case != 1)
+
+# Merging predictors and CVD outcome (excluding prevalent cases)
+data <- outcomes_cvd_noprev %>% inner_join(rownames_to_column(data), by=c("eid" = "rowname"))
+```
+
+```{r setup_prs}
+# Loading in PRS data
+prs <- readRDS("/rds/general/user/rw1317/projects/hda-22-23/live/TDS/General/Data/prs_69328.rds")
+prs_df <- enframe(prs, name = "eid", value = "value")
+data <- data %>% left_join(prs_df, by="eid")
+data <- data %>% dplyr::rename('gen_PRS' = value)
+```
+
+```{r setup_pred2}
+# Merging co-morbidities to data
+outcomes_ra <- readRDS("/rds/general/user/dba22/home/tds/Group1/tds-proj/processing_files/outcomes_separated/ra/Outputs/output_final.rds")
+outcomes_ra_usefulcols <- outcomes_ra %>% dplyr::select(prevalent_case) %>% dplyr::rename(comorb_ra = prevalent_case)
+data <- data %>% left_join(rownames_to_column(outcomes_ra_usefulcols), by=c("eid" = "rowname"))
+data$comorb_ra <- as.factor(data$comorb_ra)
+
+outcomes_af <- readRDS("/rds/general/user/dba22/home/tds/Group1/tds-proj/processing_files/outcomes_separated/af/Outputs/output_final.rds")
+outcomes_af_usefulcols <- outcomes_af %>% dplyr::select(prevalent_case) %>% dplyr::rename(comorb_af = prevalent_case)
+data <- data %>% left_join(rownames_to_column(outcomes_af_usefulcols), by=c("eid" = "rowname"))
+data$comorb_af <- as.factor(data$comorb_af)
+
+# No prevalent CKD cases present in entire dataset
+# outcomes_ckd <- readRDS("processing_files/outcomes_separated/ckd/Outputs/output_final.rds")
+# outcomes_ckd_usefulcols <- outcomes_ckd %>% dplyr::select(prevalent_case) %>% dplyr::rename(comorb_ckd = prevalent_case)
+# data <- data %>% left_join(rownames_to_column(outcomes_ckd_usefulcols), by=c("eid" = "rowname"))
+# data$comorb_ckd <- as.factor(data$comorb_ckd)
+
+outcomes_ed <- readRDS("/rds/general/user/dba22/home/tds/Group1/tds-proj/processing_files/outcomes_separated/ed/Outputs/output_final.rds")
+outcomes_ed_usefulcols <- outcomes_ed %>% dplyr::select(prevalent_case) %>% dplyr::rename(comorb_ed = prevalent_case)
+data <- data %>% left_join(rownames_to_column(outcomes_ed_usefulcols), by=c("eid" = "rowname"))
+data$comorb_ed <- as.factor(data$comorb_ed)
+
+outcomes_medhtn <- readRDS("/rds/general/user/dba22/home/tds/Group1/tds-proj/processing_files/outcomes_separated/med_antihyper/Outputs/output_final.rds")
+outcomes_medhtn_usefulcols <- outcomes_medhtn %>% dplyr::select(prevalent_case) %>% dplyr::rename(med_antihyper = prevalent_case)
+data <- data %>% left_join(rownames_to_column(outcomes_medhtn_usefulcols), by=c("eid" = "rowname"))
+data$med_antihyper <- as.factor(data$med_antihyper)
+
+# No prevalent anti-lipid usage in entire dataset
+# outcomes_medal <- readRDS("processing_files/outcomes_separated/med_antilipids/Outputs/output_final.rds")
+# outcomes_medal_usefulcols <- outcomes_medal %>% dplyr::select(prevalent_case) %>% dplyr::rename(med_antilipids = prevalent_case)
+# data <- data %>% left_join(rownames_to_column(outcomes_medal_usefulcols), by=c("eid" = "rowname"))
+# data$med_antilipids <- as.factor(data$med_antilipids)
+
+outcomes_medap <- readRDS("/rds/general/user/dba22/home/tds/Group1/tds-proj/processing_files/outcomes_separated/med_antipsych/Outputs/output_final.rds")
+outcomes_medap_usefulcols <- outcomes_medap %>% dplyr::select(prevalent_case) %>% dplyr::rename(med_antipsych = prevalent_case)
+data <- data %>% left_join(rownames_to_column(outcomes_medap_usefulcols), by=c("eid" = "rowname"))
+data$med_antipsych <- as.factor(data$med_antipsych)
+
+outcomes_medstr <- readRDS("/rds/general/user/dba22/home/tds/Group1/tds-proj/processing_files/outcomes_separated/med_steroids/Outputs/output_final.rds")
+outcomes_medstr_usefulcols <- outcomes_medstr %>% dplyr::select(prevalent_case) %>% dplyr::rename(med_steroids = prevalent_case)
+data <- data %>% left_join(rownames_to_column(outcomes_medstr_usefulcols), by=c("eid" = "rowname"))
+data$med_steroids <- as.factor(data$med_steroids)
+
+outcomes_migr <- readRDS("/rds/general/user/dba22/home/tds/Group1/tds-proj/processing_files/outcomes_separated/migraine/Outputs/output_final.rds")
+outcomes_migr_usefulcols <- outcomes_migr %>% dplyr::select(prevalent_case) %>% dplyr::rename(comorb_migraine = prevalent_case)
+data <- data %>% left_join(rownames_to_column(outcomes_migr_usefulcols), by=c("eid" = "rowname"))
+data$comorb_migraine <- as.factor(data$comorb_migraine)
+
+outcomes_sle <- readRDS("/rds/general/user/dba22/home/tds/Group1/tds-proj/processing_files/outcomes_separated/sle/Outputs/output_final.rds")
+outcomes_sle_usefulcols <- outcomes_sle %>% dplyr::select(prevalent_case) %>% dplyr::rename(comorb_sle = prevalent_case)
+data <- data %>% left_join(rownames_to_column(outcomes_sle_usefulcols), by=c("eid" = "rowname"))
+data$comorb_sle <- as.factor(data$comorb_sle)
+
+outcomes_smi <- readRDS("/rds/general/user/dba22/home/tds/Group1/tds-proj/processing_files/outcomes_separated/smi/Outputs/output_final.rds")
+outcomes_smi_usefulcols <- outcomes_smi %>% dplyr::select(prevalent_case) %>% dplyr::rename(comorb_smi = prevalent_case)
+data <- data %>% left_join(rownames_to_column(outcomes_smi_usefulcols), by=c("eid" = "rowname"))
+data$comorb_smi <- as.factor(data$comorb_smi)
+
+outcomes_t1dm <- readRDS("/rds/general/user/dba22/home/tds/Group1/tds-proj/processing_files/outcomes_separated/t1dm/Outputs/output_final.rds")
+outcomes_t1dm_usefulcols <- outcomes_t1dm %>% dplyr::select(prevalent_case) %>% dplyr::rename(comorb_t1dm = prevalent_case)
+data <- data %>% left_join(rownames_to_column(outcomes_t1dm_usefulcols), by=c("eid" = "rowname"))
+data$comorb_t1dm <- as.factor(data$comorb_t1dm)
+
+outcomes_t2dm <- readRDS("/rds/general/user/dba22/home/tds/Group1/tds-proj/processing_files/outcomes_separated/t2dm/Outputs/output_final.rds")
+outcomes_t2dm_usefulcols <- outcomes_t2dm %>% dplyr::select(prevalent_case) %>% dplyr::rename(comorb_t2dm = prevalent_case)
+data <- data %>% left_join(rownames_to_column(outcomes_t2dm_usefulcols), by=c("eid" = "rowname"))
+data$comorb_t2dm <- as.factor(data$comorb_t2dm)
+
+# rm(outcomes_ra, outcomes_ra_usefulcols, outcomes_af, outcomes_af_usefulcols,
+#    outcomes_ckd, outcomes_ckd_usefulcols, outcomes_ed, outcomes_ed_usefulcols,
+#    outcomes_ed, outcomes_ed_usefulcols, outcomes_medhtn, outcomes_medhtn_usefulcols,
+#    outcomes_medal, outcomes_medal_usefulcols, outcomes_medap, outcomes_medap_usefulcols,
+#    outcomes_medap, outcomes_medap_usefulcols, outcomes_medstr, outcomes_medstr_usefulcols,
+#    outcomes_medstr, outcomes_medstr_usefulcols, outcomes_migr, outcomes_migr_usefulcols,
+#    outcomes_sle, outcomes_sle_usefulcols, outcomes_smi, outcomes_smi_usefulcols,
+#    outcomes_t1dm, outcomes_t1dm_usefulcols, outcomes_t2dm, outcomes_t2dm_usefulcols)
+```
+
+## Pre-processing
+
+### Removing observations with missing baseline variables
+
+```{r missing_baseline}
+# Dropping samples with NAs in baseline data
+
+# For sensitivity analysis
+#library(tidyr)
+nrow_before_remove <- nrow(data)
+data <- data %>%
+  tidyr::drop_na(bl_sex.0.0, bl_age_at_recr.0.0)
+print(paste0("Removed ", (nrow_before_remove-nrow(data)), " rows with missing baseline variables."))
+#data <- data
+
+# select column names that start with "bl"
+#bl_cols <- grep("^bl", names(data), value = TRUE)
+
+# print the selected column names
+#bl_cols <- bl_cols[-c(2, 5)]
+#bl_cols
+
+#data <- data[!apply(data[, bl_cols], 1, anyNA), ]
+#4646 samples removed
+```
+
+### Deriving family history of diseases: 
+```{r preproc_fhx}
+
+# Sorting family history
+# 1 = Heart disease
+# 2 = Stroke
+# 9 = Diabetes
+
+fhx_cols <- colnames(data)[startsWith(colnames(data), "fam_illness_")]
+
+for(idx in 2:nrow(data)-1) {
+  heartdisease <- stroke <- diabetes <- NA
+  father <- mother <- siblings <- FALSE
+  for(fhx_col in fhx_cols) { 
+    field <- eval(parse(text=paste0("data$", fhx_col, "[", idx, "]")))
+    relation <- str_extract(fhx_col, "(?<=fam_illness_)[^.]+")
+    if(!is.na(field))
+      assign(relation, TRUE)
+    else
+      next
+    if(field == 1) 
+      heartdisease <- 1
+     else if(field == 2) 
+      stroke <- 1
+     else if(field == 9) 
+      diabetes <- 1
+  }
+  if(sum(father, mother, siblings)==3) {
+    if(is.na(heartdisease)) heartdisease <- 0
+    if(is.na(stroke)) stroke <- 0
+    if(is.na(diabetes)) diabetes <- 0
+  }
+  
+  data$fhx_heartdisease[idx] <- heartdisease
+  data$fhx_stroke[idx] <- stroke
+  data$fhx_diabetes[idx] <- diabetes
+}
+
+# Renaming derived family history variables
+data <- data %>% 
+  dplyr::rename("fhx_heartdisease.0.0" = "fhx_heartdisease") %>% 
+  dplyr::rename("fhx_stroke.0.0" = "fhx_stroke") %>% 
+  dplyr::rename("fhx_diabetes.0.0" = "fhx_diabetes") 
+  
+data$fhx_heartdisease.0.0 <- factor(data$fhx_heartdisease.0.0)
+data$fhx_stroke.0.0 <- factor(data$fhx_stroke.0.0)
+data$fhx_diabetes.0.0 <- factor(data$fhx_diabetes.0.0)
+```
+
+### Deriving highest qualifications:
+
+```{r preproc_quali}
+quali_cols <- colnames(data)[startsWith(colnames(data), "se_quali")]
+
+quali_dict <- list(
+  "1" = "ColUni",
+  "2" = "ALevels",
+  "3" = "OLevels",
+  "4" = "CSEs",
+  "5" = "NVQ",
+  "6" = "Other",
+  "-7" = "None",
+  "-3" = "Prefer not to answer"
+)
+
+for(idx in 2:nrow(data)-1) {
+  highest_quali <- NA
+  for(quali_col in quali_cols) { 
+    field <- eval(parse(text=paste0("data$", quali_col, "[", idx, "]")))
+    if(!is.na(field)) {
+      if(field == -7) {
+        highest_quali <- -7
+        break
+      } else if(field == -3) {
+        break
+      } else {
+        highest_quali <- min(abs(field), ifelse(is.na(highest_quali), abs(field), highest_quali))
+      }
+    }
+  }
+  data$se_highest_quali[idx] <- highest_quali
+}
+
+#data <- data %>% 
+#  dplyr::rename("bio_sys_man.0.0" = "bio_sys_man")  %>% 
+#  dplyr::rename("bio_dia_man.0.0" = "bio_dia_man")  %>% 
+#  dplyr::rename("bio_sys_auto.0.0" = "bio_sys_auto") %>% 
+#  dplyr::rename("se_highest_quali.0.0" = "se_highest_quali")
+```
+
+### Deriving blood pressure, average noise pollution
+
+```{r preproc_bp_noisepol}
+# Further derivations for BP
+#data$bio_sys_man <- (data$bio_sys_bp_manual.0.0 + data$bio_sys_bp_manual.0.1)/2
+#data$bio_dia_man <- (data$bio_dia_bp_manual.0.0 + data$bio_dia_bp_manual.0.1)/2
+data$bio_sys_auto <- (data$bio_sys_bp_auto.0.0 + data$bio_sys_bp_auto.0.1)/2
+#data$bio_dia_auto <- (data$bio_dia_bp_auto.0.0 + data$bio_dia_bp_auto.0.1)/2
+
+data <- data %>% dplyr::mutate(env_avg_noise_24_avg = rowMeans(dplyr::select(., c("env_avg_noise_daytime.0.0", "env_avg_noise_evening.0.0", "env_avg_noise_night.0.0"))))
+
+data$env_avg_noise_24_avg <- unname(data$env_avg_noise_24_avg)
+
+# Anu code
+data <- data %>%
+  mutate(env_avg_noise_24_avg = as.numeric(env_avg_noise_24_avg))
+
+data <- subset(data, select = -c(env_avg_noise_daytime.0.0, env_avg_noise_evening.0.0, env_avg_noise_night.0.0))
+```
+
+### Misc. pre-processing (removing unneeded predictors, setting appropriate NAs)
+
+```{r preproc_misc}
+# Setting pack years to 0 for never-smokers
+data$be_pack_years_smoking.0.0 <- ifelse(data$be_smoking_status.0.0 == 0, 0, data$be_pack_years_smoking.0.0)
+
+data$be_smoking_status.0.0[data$be_smoking_status.0.0 == -3] <- NA
+
+data$be_current_smoke.0.0[data$be_current_smoke.0.0 == -3] <- NA
+
+data$be_alcohol_freq.0.0[data$be_alcohol_freq.0.0 == -3] <- NA
+
+colnames(data)[colnames(data) == "bl_ethnic_bckgd.0.0"] <- "bl_ethnic_bckg.0.0.White"
+data$bl_ethnic_bckg.0.0.White[data$bl_ethnic_bckg.0.0.White == -1 | data$bl_ethnic_bckg.0.0.White == -3] <- NA
+
+data$be_days_weeks_walking.0.0[data$be_days_weeks_walking.0.0 == -1 | data$be_days_weeks_walking.0.0 == -3] <- NA
+data$be_days_weeks_walking.0.0[data$be_days_weeks_walking.0.0 == -2] <- 0
+
+data$be_days_weeks_mod_phys.0.0[data$be_days_weeks_mod_phys.0.0 == -1 | data$be_days_weeks_mod_phys.0.0 == -3] <- NA
+
+data$be_days_weeks_vig_phys.0.0[data$be_days_weeks_vig_phys.0.0 == -1 | data$be_days_weeks_vig_phys.0.0 == -3] <- NA
+
+data$be_duration_sleep.0.0[data$be_duration_sleep.0.0 == -1 | data$be_duration_sleep.0.0 == -3] <- NA
+
+data$env_exp_tobacco_home.0.0 <-ifelse(data$env_exp_tobacco_home.0.0 <0, NA, data$env_exp_tobacco_home.0.0)
+
+data$env_exp_tobacco_outside.0.0 <-ifelse(data$env_exp_tobacco_outside.0.0 <0, NA, data$env_exp_tobacco_outside.0.0)
+
+#data$be_days_weeks_mod_phys.0.0 <- factor(data$be_days_weeks_mod_phys.0.0)
+
+# Fixing naming of a few columns
+colnames(data)[colnames(data) == "bio_neutrophill_count.0.0"] <- "bio_neutrophil_count.0.0"
+colnames(data)[colnames(data) == "bio_eosinophill_count.0.0"] <- "bio_eosinophil_count.0.0"
+colnames(data)[colnames(data) == "bio_basophill_count.0.0"] <- "bio_basophil_count.0.0"
+
+# Removing unneeded columns (the ones we made derivations from)
+data <- data %>% dplyr::select(-starts_with("se_quali"))
+data <- data %>% dplyr::select(-starts_with("fam_illness"))
+data <- data %>% dplyr::select(-starts_with(" "))
+data <- data %>% dplyr::select(-starts_with("bio_sys_bp"))
+data <- data %>% dplyr::select(-starts_with("bio_dia_bp"))
+
+# Removing unneeded phys act
+data <- data %>% dplyr::select(-starts_with("be_time_spent_vig_physact"))
+data <- data %>% dplyr::select(-starts_with("be_time_spent_mod_physact"))
+data <- data %>% dplyr::select(-starts_with("be_time_spent_light_physact"))
+
+# Dropping income score all countries
+data <- subset(data, select = -c(se_inc_score_eng.0.0, se_inc_score_wales.0.0, se_inc_score_scot.0.0))
+
+# Dropping microalbumin and haemotocrit and direct billirubin
+data <- subset(data, select = -c(bio_microalbumin_ur.0.0, bio_haematocrit_perc.0.0, bio_direct_billirubin.0.0))
+
+# Dropping nitro dioxide and pm2.5-10
+data <- subset(data, select = -c(env_nitro_diox_airpoll_2010.0.0, env_pm2.5_10_airpoll_2010.0.0))
+
+# Dropping highly correlated biological variables
+data <- subset(data, select = -c(bio_rbc_count.0.0, bio_wbc_count.0.0, bio_apolipoB.0.0, bio_apolipoA.0.0, bio_cholesterol.0.0, bio_testosterone.0.0))
+
+# Dropping non-relevant smoking variables
+data <- subset(data, select = -c(be_age_smoking_prev.0.0, be_age_smoke_current.0.0, be_tobacco_type_current.0.0, be_cigarettes_daily_current.0.0, be_current_smoke.0.0))
+
+data <- data %>% dplyr::select(-c("be_tobacco_smoke_now.0.0", "be_amount_tobacco_smoked.0.0"))
+
+data <- data %>% dplyr::select(-c("bl_dte_of_death.0.0", "bl_dte_attending_assessment.0.0")) # dte of death and bl dte of death were the same
+
+# Dropping bio_sys_man and dia_man
+# data <- subset(data, select = -c(bio_sys_man.0.0, bio_dia_man.0.0))
+
+
+```
+
+
+### Deriving categorical variables
+
+```{r preproc_factors}
+data <- data
+
+# Alcohol frequency
+data$be_alcohol_freq.0.0_cat <- case_when(
+  data$be_alcohol_freq.0.0 == 6 ~ 0,#"Non-drinker",
+  data$be_alcohol_freq.0.0 == 4 ~ 1,#"Social drinker",
+  data$be_alcohol_freq.0.0 == 5 ~ 1,#"Social drinker",
+  data$be_alcohol_freq.0.0 == 3 ~ 2,#"Moderate drinker",
+  data$be_alcohol_freq.0.0 == 2 ~ 3,#"Daily drinker",
+  data$be_alcohol_freq.0.0 == 1 ~ 3,#"Daily drinker",
+  TRUE ~ NA
+)
+
+data$be_alcohol_freq.0.0_cat <- as.factor(data$be_alcohol_freq.0.0_cat)
+#data$be_alcohol_freq.0.0_cat <- factor(data$be_alcohol_freq.0.0_cat, levels = c("Non-drinker", "Social drinker", "Moderate drinker","Daily drinker"))
+
+# All types of physical activity
+
+data$be_days_weeks_walking.0.0_cat <- case_when(
+  data$be_days_weeks_walking.0.0 == 0 ~ 0,#"0-2",
+  data$be_days_weeks_walking.0.0 == 1 ~ 0,#"0-2",
+  data$be_days_weeks_walking.0.0 == 2 ~ 0,#"0-2",
+  data$be_days_weeks_walking.0.0 == 3 ~ 1,#"3-5",
+  data$be_days_weeks_walking.0.0 == 4 ~ 1,#"3-5",
+  data$be_days_weeks_walking.0.0 == 5 ~ 1,#"3-5",
+  data$be_days_weeks_walking.0.0 == 6 ~ 2,#"6-7",
+  data$be_days_weeks_walking.0.0 == 7 ~ 2,#"6-7",
+  TRUE ~ NA
+)
+
+data$be_days_weeks_walking.0.0_cat <- as.factor(data$be_days_weeks_walking.0.0_cat)
+#data$be_days_weeks_walking.0.0_cat <- factor(data$be_days_weeks_walking.0.0_cat, levels = c("0-2", "3-5", "6-7"))
+
+data$be_days_weeks_mod_phys.0.0_cat <- case_when(
+  data$be_days_weeks_mod_phys.0.0 == 0 ~ 0,#"0-2",
+  data$be_days_weeks_mod_phys.0.0 == 1 ~ 0,#"0-2",
+  data$be_days_weeks_mod_phys.0.0 == 2 ~ 0,#"0-2",
+  data$be_days_weeks_mod_phys.0.0 == 3 ~ 1,#"3-5",
+  data$be_days_weeks_mod_phys.0.0 == 4 ~ 1,#"3-5",
+  data$be_days_weeks_mod_phys.0.0 == 5 ~ 1,#"3-5",
+  data$be_days_weeks_mod_phys.0.0 == 6 ~ 2,#"6-7",
+  data$be_days_weeks_mod_phys.0.0 == 7 ~ 2,#"6-7",
+  TRUE ~ NA
+)
+
+data$be_days_weeks_mod_phys.0.0_cat <- as.factor(data$be_days_weeks_mod_phys.0.0_cat)
+#data$be_days_weeks_mod_phys.0.0_cat <- factor(data$be_days_weeks_mod_phys.0.0_cat, levels = c("0-2", "3-5", "6-7"))
+
+data$be_days_weeks_vig_phys.0.0_cat <- case_when(
+  data$be_days_weeks_vig_phys.0.0 == 0 ~ 0,#"0-2",
+  data$be_days_weeks_vig_phys.0.0 == 1 ~ 0,#"0-2",
+  data$be_days_weeks_vig_phys.0.0 == 2 ~ 0,#"0-2",
+  data$be_days_weeks_vig_phys.0.0 == 3 ~ 0,#"0-2",
+  data$be_days_weeks_vig_phys.0.0 == 4 ~ 1,#"3-5",
+  data$be_days_weeks_vig_phys.0.0 == 5 ~ 1,#"3-5",
+  data$be_days_weeks_vig_phys.0.0 == 6 ~ 2,#"6-7",
+  data$be_days_weeks_vig_phys.0.0 == 7 ~ 2,#"6-7",
+  TRUE ~ NA
+)
+
+data$be_days_weeks_vig_phys.0.0_cat <- as.factor(data$be_days_weeks_vig_phys.0.0_cat)
+#data$be_days_weeks_vig_phys.0.0_cat <- factor(data$be_days_weeks_vig_phys.0.0_cat, levels = c("0-2", "3-5", "6-7"))
+
+
+
+# Didn't end up using this, look below this for commented-out code.
+# Qualifications to years
+# data$se_highest_quali.0.0_cont <- case_when(
+#   data$se_highest_quali.0.0 == 1 ~ 20,
+#   data$se_highest_quali.0.0 == 2 ~ 13,
+#   data$se_highest_quali.0.0 == 3 ~ 10,
+#   data$se_highest_quali.0.0 == 4 ~ 10,
+#   data$se_highest_quali.0.0 == 5 ~ 19,
+#   data$se_highest_quali.0.0 == 6 ~ 15,
+#   data$se_highest_quali.0.0 == -7 ~ 7,
+#   TRUE ~ NA
+# )
+
+# # Qualifications
+ data$se_highest_quali.0.0_cat <- case_when(
+   data$se_highest_quali == 1 ~ "High",
+   data$se_highest_quali == 2 ~ "Intermediate",
+   data$se_highest_quali == 3 ~ "Intermediate",
+   data$se_highest_quali == 4 ~ "Low",
+   data$se_highest_quali == 5 ~ "Low",
+   data$se_highest_quali == -7 ~ "Low",
+   data$se_highest_quali == 6 ~ "Other professional",
+   TRUE ~ NA
+ )
+ 
+data$se_highest_quali.0.0_cat <- as.factor(data$se_highest_quali.0.0_cat)
+
+# data$se_highest_quali.0.0_cat <- factor(data$se_highest_quali.0.0_cat, levels = c("Low", "High", "Intermediate", "Other professional"))
+
+# Smoking status
+data$be_smoking_status.0.0_cat <- case_when(
+  data$be_smoking_status.0.0 == 0 ~ 0,#"Never",
+  data$be_smoking_status.0.0 == 1 ~ 1,#"Previous",
+  data$be_smoking_status.0.0 == 2 ~ 2,#"Current",
+  TRUE ~ NA
+)
+
+data$be_smoking_status.0.0_cat <- as.factor(data$be_smoking_status.0.0_cat)
+#data$be_smoking_status.0.0_cat <- factor(data$be_smoking_status.0.0_cat, levels = c("Never", "Previous", "Current"))
+
+# Ethnicity 
+data$bl_ethnic_bckg.0.0.White_cat <- case_when(
+  data$bl_ethnic_bckg.0.0.White == 1 ~ 1,#"White",
+  data$bl_ethnic_bckg.0.0.White == 1001 ~ 1,#"White",
+  data$bl_ethnic_bckg.0.0.White == 1002 ~ 1,#"White",
+  data$bl_ethnic_bckg.0.0.White == 1003 ~ 1,#"White",
+  data$bl_ethnic_bckg.0.0.White == 2 ~ 0,#"Other",
+  data$bl_ethnic_bckg.0.0.White == 2001 ~ 0,#"Other",
+  data$bl_ethnic_bckg.0.0.White == 2002 ~ 0,#"Other",
+  data$bl_ethnic_bckg.0.0.White == 2003 ~ 0,#"Other",
+  data$bl_ethnic_bckg.0.0.White == 2004 ~ 0,#"Other",
+  data$bl_ethnic_bckg.0.0.White == 3 ~ 0,#"Other",
+  data$bl_ethnic_bckg.0.0.White == 3001 ~ 0,#"Other",
+  data$bl_ethnic_bckg.0.0.White == 3002 ~ 0,#"Other",
+  data$bl_ethnic_bckg.0.0.White == 3003 ~ 0,#"Other",
+  data$bl_ethnic_bckg.0.0.White == 3004 ~ 0,#"Other",
+  data$bl_ethnic_bckg.0.0.White == 4 ~ 0,#"Other",
+  data$bl_ethnic_bckg.0.0.White == 4001 ~ 0,#"Other",
+  data$bl_ethnic_bckg.0.0.White == 4002 ~ 0,#"Other",
+  data$bl_ethnic_bckg.0.0.White == 4003 ~ 0,#"Other",
+  data$bl_ethnic_bckg.0.0.White == 5 ~ 0,#"Other",
+  data$bl_ethnic_bckg.0.0.White == 6 ~ 0,#"Other",
+  TRUE ~ NA
+)
+
+data$bl_ethnic_bckg.0.0.White_cat <- as.factor(data$bl_ethnic_bckg.0.0.White_cat)
+data$bl_sex.0.0 <-as.factor(data$bl_sex.0.0)
+
+# Dropping the numeric variables that have been converted into factors
+data <- subset(data, select = -c(be_alcohol_freq.0.0, be_days_weeks_walking.0.0, be_days_weeks_mod_phys.0.0, be_days_weeks_vig_phys.0.0, se_highest_quali, be_smoking_status.0.0, bl_ethnic_bckg.0.0.White))
+
+
+
+```
+
+### Processing sleep and diet variables
+
+```{r preproc_sleepdiet}
+
+data$be_snoring.0.0[data$be_snoring.0.0 == -1 | data$be_snoring.0.0 == -3] <- NA
+data$be_chronotype.0.0[data$be_chronotype.0.0 == -1 | data$be_chronotype.0.0 == -3] <- NA
+data$be_insomnia.0.0[data$be_insomnia.0.0 == -1 | data$be_insomnia.0.0 == -3] <- NA
+data$be_narcolepsy.0.0[data$be_narcolepsy.0.0 == -1 | data$be_narcolepsy.0.0 == -3] <- NA
+data$be_cooked_veg.0.0[data$be_cooked_veg.0.0 == -1 | data$be_cooked_veg.0.0 == -3] <- NA
+data$be_raw_veg.0.0[data$be_raw_veg.0.0 == -1 | data$be_raw_veg.0.0 == -3] <- NA
+data$be_fresh_fruit.0.0[data$be_fresh_fruit.0.0 == -1 | data$be_fresh_fruit.0.0 == -3] <- NA
+data$be_dried_fruit.0.0[data$be_dried_fruit.0.0 == -1 | data$be_dried_fruit.0.0 == -3] <- NA
+data$be_oily_fish.0.0[data$be_oily_fish.0.0 == -1 | data$be_oily_fish.0.0 == -3] <- NA
+data$be_non_oily_fish.0.0[data$be_non_oily_fish.0.0 == -1 | data$be_non_oily_fish.0.0 == -3] <- NA
+data$be_processed_meat.0.0[data$be_processed_meat.0.0 == -1 | data$be_processed_meat.0.0 == -3] <- NA
+data$be_poultry.0.0[data$be_poultry.0.0 == -1 | data$be_poultry.0.0 == -3] <- NA
+data$be_beef.0.0[data$be_beef.0.0 == -1 | data$be_beef.0.0 == -3] <- NA
+data$be_lamb.0.0[data$be_lamb.0.0 == -1 | data$be_lamb.0.0 == -3] <- NA
+data$be_pork.0.0[data$be_pork.0.0 == -1 | data$be_pork.0.0 == -3] <- NA
+data$be_bread.0.0[data$be_bread.0.0 == -1 | data$be_bread.0.0 == -3] <- NA
+data$be_bread_type.0.0[data$be_bread_type.0.0 == -1 | data$be_bread_type.0.0 == -3] <- NA
+data$be_cereal.0.0[data$be_cereal.0.0 == -1 | data$be_cereal.0.0 == -3] <- NA
+data$be_cereal_type.0.0[data$be_cereal_type.0.0 == -1 | data$be_cereal_type.0.0 == -3] <- NA
+
+data$be_cooked_veg.0.0[data$be_cooked_veg.0.0 == -10] <- 0.5
+data$be_raw_veg.0.0[data$be_raw_veg.0.0 == -10] <- 0.5
+data$be_fresh_fruit.0.0[data$be_fresh_fruit.0.0 == -10] <- 0.5
+data$be_dried_fruit.0.0[data$be_dried_fruit.0.0 == -10] <- 0.5
+data$be_oily_fish.0.0[data$be_oily_fish.0.0 == -10] <- 0.5
+data$be_non_oily_fish.0.0[data$be_non_oily_fish.0.0 == -10] <- 0.5
+data$be_processed_meat.0.0[data$be_processed_meat.0.0 == -10] <- 0.5
+data$be_poultry.0.0[data$be_poultry.0.0 == -10] <- 0.5
+data$be_beef.0.0[data$be_beef.0.0 == -10] <- 0.5
+data$be_lamb.0.0[data$be_lamb.0.0 == -10] <- 0.5
+data$be_pork.0.0[data$be_pork.0.0 == -10] <- 0.5
+data$be_bread.0.0[data$be_bread.0.0 == -10] <- 0.5
+data$be_cereal.0.0[data$be_cereal.0.0 == -10] <- 0.5
+
+data$be_beef.0.0 <- factor(data$be_beef.0.0)
+data$be_bread_type.0.0 <- factor(data$be_bread_type.0.0)
+data$be_cereal_type.0.0 <- factor(data$be_cereal_type.0.0)
+data$be_chronotype.0.0 <- factor(data$be_chronotype.0.0)
+data$be_insomnia.0.0 <- factor(data$be_insomnia.0.0)
+data$be_lamb.0.0 <- factor(data$be_lamb.0.0)
+data$be_narcolepsy.0.0 <- factor(data$be_narcolepsy.0.0)
+data$be_non_oily_fish.0.0 <- factor(data$be_non_oily_fish.0.0)
+data$be_oily_fish.0.0 <- factor(data$be_oily_fish.0.0)
+data$be_pork.0.0 <- factor(data$be_pork.0.0)
+data$be_poultry.0.0 <- factor(data$be_poultry.0.0)
+data$be_processed_meat.0.0 <- factor(data$be_processed_meat.0.0)
+data$be_snoring.0.0 <- factor(data$be_snoring.0.0)
+```
+
+##### Sleep score derivation
+```{r preproc_sleepscore}
+data$be_duration_sleep.0.0_score <- case_when(
+  data$be_duration_sleep.0.0 == 1 ~ 0,
+  data$be_duration_sleep.0.0 == 2 ~ 0,
+  data$be_duration_sleep.0.0 == 3 ~ 0,
+  data$be_duration_sleep.0.0 == 4 ~ 0,
+  data$be_duration_sleep.0.0 == 5 ~ 0,
+  data$be_duration_sleep.0.0 == 6 ~ 0,
+  data$be_duration_sleep.0.0 == 7 ~ 1,
+  data$be_duration_sleep.0.0 == 8 ~ 1,
+  data$be_duration_sleep.0.0 == 9 ~ 0,
+  data$be_duration_sleep.0.0 == 10 ~ 0,
+  data$be_duration_sleep.0.0 == 11 ~ 0,
+  data$be_duration_sleep.0.0 == 12 ~ 0,
+  data$be_duration_sleep.0.0 == 13 ~ 0,
+  data$be_duration_sleep.0.0 == 14 ~ 0,
+  data$be_duration_sleep.0.0 == 15 ~ 0,
+  data$be_duration_sleep.0.0 == 16 ~ 0,
+  data$be_duration_sleep.0.0 == 17 ~ 0,
+  data$be_duration_sleep.0.0 == 18 ~ 0,
+  data$be_duration_sleep.0.0 == 19 ~ 0,
+  data$be_duration_sleep.0.0 == 20 ~ 0,
+  data$be_duration_sleep.0.0 == 21 ~ 0,
+  data$be_duration_sleep.0.0 == 22 ~ 0,
+  data$be_duration_sleep.0.0 == 23 ~ 0,
+  TRUE ~ NA
+)
+
+# Chronotype
+# Low risk (assigned score 1) is defined as someone with an early chronotype (definitely a morning person, 1, and more a morning than evening person, 2)
+data$be_chronotype.0.0_score <- case_when(
+  data$be_chronotype.0.0 == 1 ~ 1,
+  data$be_chronotype.0.0 == 2 ~ 1,
+  data$be_chronotype.0.0 == 3 ~ 0,
+  data$be_chronotype.0.0 == 4 ~ 0,
+  TRUE ~ NA
+)
+
+# Insomnia
+# Low risk (assigned score 1) is defined as someone who never/rarely suffers from insomnia, 1
+data$be_insomnia.0.0_score <- case_when(
+  data$be_insomnia.0.0 == 1 ~ 1,
+  data$be_insomnia.0.0 == 2 ~ 0,
+  data$be_insomnia.0.0 == 3 ~ 0,
+  TRUE ~ NA
+)
+
+# Snoring 
+# Low risk (assigned score 1) is defined as someone whose partner/close relative or friend does not complain about their snoring, 2
+data$be_snoring.0.0_score <- case_when(
+  data$be_snoring.0.0 == 1 ~ 0,
+  data$be_snoring.0.0 == 2 ~ 1,
+  TRUE ~ NA
+)
+
+# Narcolepsy 
+# Low risk (assigned score 1) is defined as someone never/rarely suffers from narcolepsy, 0
+data$be_narcolepsy.0.0_score <- case_when(
+  data$be_narcolepsy.0.0 == 0 ~ 1,
+  data$be_narcolepsy.0.0 == 1 ~ 0,
+  data$be_narcolepsy.0.0 == 2 ~ 0,
+  data$be_narcolepsy.0.0 == 3 ~ 0,
+  TRUE ~ NA
+)
+
+# Final sleep score - sum of all other scores
+data <- data %>%
+        dplyr::mutate(be_sleep_score.0.0 = be_duration_sleep.0.0_score + be_chronotype.0.0_score +
+                                          be_snoring.0.0_score + be_insomnia.0.0_score + be_narcolepsy.0.0_score)
+
+data <- subset(data, select = -c(be_duration_sleep.0.0_score, be_duration_sleep.0.0,
+  be_chronotype.0.0_score, be_chronotype.0.0,
+  be_insomnia.0.0_score, be_insomnia.0.0, 
+  be_snoring.0.0_score, be_snoring.0.0,
+  be_narcolepsy.0.0_score, be_narcolepsy.0.0))
+```
+
+
+##### Diet score derivation
+
+```{r preproc_dietscore}
+##making diet score
+data <- data %>%
+  #fresh+dry fruit >= 3 servings daily would be 1 (biobak is in piece, and piece = serving)
+  dplyr::mutate(fruit_score = ifelse(be_fresh_fruit.0.0+be_dried_fruit.0.0 >= 3, 1, 0)) %>%
+  #cooked+raw veg >= 3 sverving daily would be 1 (biobank is in tablespoon, and 3 tablespoon is one serving)
+  dplyr::mutate(veg_score = ifelse(be_cooked_veg.0.0+be_raw_veg.0.0 >= 9, 1, 0)) %>%
+  #oily + non-oily fish >= 2 serving per week which is coded 3, 4, and 5 on biobank
+  dplyr::mutate(fish_score = ifelse(be_oily_fish.0.0==3 | be_oily_fish.0.0 == 4 | be_oily_fish.0.0 == 5 | be_non_oily_fish.0.0 == 3 | be_non_oily_fish.0.0 == 4 | be_non_oily_fish.0.0 == 5 | as.numeric(be_oily_fish.0.0) + as.numeric(be_non_oily_fish.0.0) >= 4, 1, 0)) %>%
+  #processed meat would be 1 if <= 1 serving per week, biobank is how often eat per week
+  dplyr::mutate(processed_meat_score = ifelse(be_processed_meat.0.0 == 0| be_processed_meat.0.0 == 1 | be_processed_meat.0.0 == 2,1,0))%>%
+  #unprocessed red meat is 1 if <= 2 servings per week, adding beef, lamb and pork, 
+  dplyr::mutate(unprocessed_red_score = ifelse(as.numeric(be_beef.0.0)+as.numeric(be_lamb.0.0)+as.numeric(be_pork.0.0) <=4,1,0)) %>% 
+  dplyr::mutate(whole_grain_amount = (ifelse(be_cereal_type.0.0 == 3 | be_cereal_type.0.0 == 1, be_cereal.0.0 / 7,0)) + (ifelse(be_bread_type.0.0 == 3, be_bread.0.0 / 7, 0))) %>%
+  dplyr::mutate(refine_grain_amount = (ifelse(be_cereal_type.0.0 != 3 & be_cereal_type.0.0!= 1, be_cereal.0.0 / 7, 0)) + (ifelse(be_bread_type.0.0 != 3, be_bread.0.0 / 7, 0))) %>%
+  dplyr::mutate(whole_grain_score = ifelse(whole_grain_amount>= 3, 1, 0)) %>%
+  dplyr::mutate(refine_grain_score = ifelse(refine_grain_amount <= 1.5, 1, 0)) %>%
+  dplyr::mutate(be_diet_score = fruit_score + veg_score + fish_score + processed_meat_score + 
+           unprocessed_red_score + whole_grain_score + refine_grain_score)
+
+# deleting the temp columns
+data <- subset(data,select = -c(fruit_score,veg_score, fish_score,processed_meat_score, unprocessed_red_score, whole_grain_score, refine_grain_score, whole_grain_amount,refine_grain_amount))
+
+data <- data %>% dplyr::select(-c(be_cooked_veg.0.0, be_raw_veg.0.0, be_fresh_fruit.0.0, be_dried_fruit.0.0, be_oily_fish.0.0,
+                             be_non_oily_fish.0.0, be_processed_meat.0.0, be_poultry.0.0, be_beef.0.0, be_lamb.0.0,
+                             be_pork.0.0, be_bread.0.0, be_bread_type.0.0, be_cereal.0.0, be_cereal_type.0.0))
+
+
+table(data$be_diet_score)
+rownames(data) <- data$eid
+#data <- subset(data, select = -Row.names)
+data <- subset(data, select = -eid)
+
+```
+
+##### Removing observations with > 25% predictors missing
+
+```{r preproc_rowmissing}
+current_numb_rows <- nrow(data)
+data_predictors <- data %>% dplyr::select(-c("case", "prevalent_case", "incident_case", "date_recr", "bl_dte_lost_follow.0.0", "date_diagnosis", "time_to_diagnosis", "date_death"))
+
+# iter6_predictors <- iter6 %>% select(-c("case", "prevalent_case", "incident_case", "date_recr", "bl_dte_lost_follow.0.0", "date_diagnosis", "time_to_diagnosis", "date_death"))
+
+data_predictors$na_count <- apply(data_predictors, 1, function(x) sum(is.na(x)/ncol(data_predictors) * 100))
+
+data <- cbind(data_predictors, data %>% dplyr::select(c("case", "prevalent_case", "incident_case", "date_recr", "bl_dte_lost_follow.0.0", "date_diagnosis", "time_to_diagnosis", "date_death")))
+
+data <- subset(data, na_count < 25)
+
+data <- data %>% dplyr::select(-c("na_count"))
+print(paste0("Removed ", (current_numb_rows - nrow(data)), " rows due to > 25% missing predictors."))
+```
+
+##### Removing observations with missing categorical predictors
+
+```{r preproc_catmissing}
+#data2 <- data
+current_numb_rows <- nrow(data)
+factor_vars <- names(data)[sapply(data, is.factor)]
+
+# Calculate column-wise missingness for factor variables
+missingness <- data %>% 
+  dplyr::select(all_of(factor_vars)) %>% 
+  dplyr::summarise(across(everything(), ~sum(is.na(.))))
+
+# Print missingness
+print(missingness)
+
+data_wo_sleepdiet <- data %>%
+  #dplyr::select(-c(outcome_vars))%>%
+  dplyr::select(where(is.factor))
+#rownames(iter9_wo_sleepdiet) <- original_rownames
+
+data <- data[complete.cases(data_wo_sleepdiet),]
+
+print(paste0("Removed ", (current_numb_rows - nrow(data)), " rows due to missing categorical predictors."))
+```
+
+### Creating time-to-event column
+
+```{r preproc_tte}
+
+data$tte <- ifelse(data$incident_case==1, 
+                    data$time_to_diagnosis, 
+                    ifelse(is.na(data$bl_dte_lost_follow.0.0),
+                        ifelse(is.na(data$date_death), 
+                            ymd("2022-11-07") - ymd(data$date_recr), 
+                            ymd(data$date_death) - ymd(data$date_recr)),
+                        ymd(data$bl_dte_lost_follow.0.0) - ymd(data$date_recr)))
+
+data$outcome_incident_case <- data$incident_case
+data$outcome_tte <- data$tte
+
+data <- data %>% dplyr::select(-c("case", "prevalent_case", "incident_case", "date_recr", "bl_dte_lost_follow.0.0", "time_to_diagnosis", "date_death", "date_diagnosis", "tte"))
+```
+
+## Data Exploration
+
+### Missingness analysis (per column)
+
+```{r explr_missing}
+# @TODO
+```
+
+
+### Correlation heatmap
+
+```{r explr_corr}
+# Correlation matrix
+data_corr <- cor(data %>% dplyr::select(-c("outcome_tte", "outcome_incident_case")) %>% dplyr::select_if(is.numeric), use = "pairwise.complete.obs")
+
+pheatmap(data_corr, show_rownames = TRUE, show_colnames = TRUE, cluster_cols = FALSE, cluster_rows = FALSE)
+```
+
+### Table 1
+
+```{r expl_table1}
+# Table1 code
+```
+
+### Distribution plots
+
+```{r expl_distr}
+# Distribution code
+```
+
+## Imputing the data
+
+This section was done in Python.
+
+```{r pre_imput}
+# Save row names
+data$eid <- rownames(data)
+if(SENSITIVITY) {
+  write.csv(data, file = "imputation/sens_nonimputed.csv", row.names = FALSE)
+} else {
+  write.csv(data, file = "imputation/prim_nonimputed.csv", row.names = FALSE)
+}
+
+# 
+# Impute the data with k-NN
+#
+
+```
+
+```{r post_imput}
+if(SENSITIVITY) {
+  imputed_data <- read.csv("imputation/sens_imputed.csv")
+} else {
+  imputed_data <- read.csv("imputation/prim_imputed.csv")
+}
+
+#print(paste0("After imputation we have ", sum(is.na(imputed_data)), " missing values."))
+
+# Restore row names
+rownames(imputed_data) <- imputed_data$eid
+imputed_data <- imputed_data %>% dplyr::select(-eid)
+
+sort_columns <- function(dataset) {
+  # Sorting the columns
+  dataset <- dataset[,sort(colnames(dataset))]
+  return (dataset %>%
+    dplyr::select(-outcome_incident_case, -outcome_tte, outcome_incident_case, outcome_tte))
+}
+
+# Factoring categorical variables
+onehot_vars <- c('be_alcohol_freq.0.0_cat', 'be_days_weeks_walking.0.0_cat', 'be_days_weeks_mod_phys.0.0_cat',
+                'be_days_weeks_vig_phys.0.0_cat', 'be_smoking_status.0.0_cat')
+imputed_data[onehot_vars] <- lapply(imputed_data[onehot_vars], as.factor)
+
+imputed_data_unencoded <- imputed_data
+binary_cols <- sapply(imputed_data_unencoded, function(x) { all(x %in% c(0, 1)) })
+imputed_data_unencoded[binary_cols] <- lapply(imputed_data_unencoded[binary_cols], factor)
+
+imputed_data_unencoded <- sort_columns(imputed_data_unencoded)
+
+# One-hot encoding > 2 level categorical variables
+dmy <- dummyVars(" ~ .", data = imputed_data)
+imputed_data_encoded <- data.frame(predict(dmy, newdata = imputed_data))
+
+# Making factors out of [0, 1] variables
+binary_columns <- names(imputed_data_encoded)[sapply(imputed_data_encoded, function(x) all(x %in% c(0, 1)))]
+imputed_data_encoded <- imputed_data_encoded %>%
+  dplyr::mutate(across(all_of(binary_columns), as.factor))
+
+# Sorting the columns
+imputed_data_encoded <- sort_columns(imputed_data_encoded)
+
+# Ready for statistical analysis
+if(SENSITIVITY) {
+  saveRDS(imputed_data_encoded, "data/dataset_sensitivity_imputed_encoded.Rds")
+  saveRDS(imputed_data_unencoded, "data/dataset_sensitivity_imputed_unencoded.Rds")
+} else {
+  saveRDS(imputed_data_encoded, "data/dataset_primary_imputed_encoded.Rds")
+  saveRDS(imputed_data_unencoded, "data/dataset_primary_imputed_unencoded.Rds")
+}
+
+```
+
+## Statistical analysis
+
+See statistical analysis file.
