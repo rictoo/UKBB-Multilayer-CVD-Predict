@@ -744,13 +744,67 @@ pheatmap(data_corr, show_rownames = TRUE, show_colnames = TRUE, cluster_cols = F
 ### Table 1
 
 ```{r expl_table1}
-# Table1 code
+# table 1 stuff
+tabledata <- readRDS("../files/imputed_iter9_cc_plswork_onehot_outcomes.rds")
+library(gtsummary)
+
+
+# recode labels to be strings not numbers
+tabledata$bl_ethnic_bckg.0.0.White = factor(tabledata$bl_ethnic_bckg.0.0.White, labels = c("Other", "White"))
+tabledata$outcome_incident_case <- factor(tabledata$outcome_incident_case, labels = c("Control", "CVD Case"))
+tabledata$bl_sex.0.0 <- factor(tabledata$bl_sex.0.0, labels = c("Female", "Male"))
+
+tabledata <- tabledata %>%
+  mutate(smoking_status = case_when(
+    be_smoking_status.0.0_cat.2 == 1 ~ "Current smoker",
+    be_smoking_status.0.0_cat.1 == 1 ~ "Former smoker",
+    be_smoking_status.0.0_cat.0 == 1 ~ "Never smoker"
+  ))
+
+
+tablevars <- tabledata %>%
+  select(starts_with("bl"), "outcome_incident_case", "PRS", "bio_sys_auto.0.0", "smoking_status", "be_sleep_score.0.0", 
+         "be_diet_score", starts_with("env"))
+
+tablevars$smoking_status <- as.factor(tablevars$smoking_status)
+
+
+table1_bl <- tablevars %>% tbl_summary(
+  by = outcome_incident_case,
+  statistic = list(
+    all_continuous() ~ "{mean} ({sd})",
+    all_categorical() ~ "{n} ({p}%)"
+  ),
+  digits = all_continuous() ~ 2,
+  missing_text = "(Missing)", 
+  label = list(
+    bl_BMI.0.0 ~ "BMI",
+    bl_sex.0.0 ~ "Sex",
+    bl_age_at_recr.0.0 ~ "Age, years",
+    bl_ethnic_bckg.0.0.White ~ "Ethnic background",
+    bio_sys_auto.0.0 = "Systolic BP, mmHg",
+    smoking_status = "Smoking status",
+    be_sleep_score.0.0 = "Sleep score",
+    be_diet_score = "Diet score",
+    se_town_dep_index.0.0 = "Townsend deprivation index",
+    env_avg_noise_24_avg = "Noise pollution, 24 hours",
+    env_exp_tobacco_home.0.0 = "Second-hand smoke at home",
+    env_exp_tobacco_outside.0.0 ="Second-hand smoke outside",
+    env_nitro_oxid_airpoll_2010.0.0 = "NOx air pollution",
+    env_pm10_airpoll_2010.0.0 = "PM10 air pollution",
+    env_pm2.5_airpoll_2010.0.0 = "PM2.5 air pollution"
+  )
+) %>%
+  add_p() 
+    
+table1_bl
+
 ```
 
 ### Distribution plots
 
 ```{r expl_distr}
-# Distribution code
+# Distribution code, in cvd_project.Rmd (don't forget before report!)
 ```
 
 ## Imputing the data

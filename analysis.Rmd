@@ -259,6 +259,7 @@ get_stability_plot <- function(model_output, outcome_title="Outcome variables", 
 
 ```
 
+# Univariate analysis 
 ```{r univariate code, eval=FALSE}
 iter9 <- readRDS("imputed_iter9_cc_plswork_onehot_outcomes.rds")
 iter12 <- readRDS("imputed_iter9_cc_plswork_nothot_outcomes_rownames.rds")
@@ -406,6 +407,136 @@ for (variable in colnames(df_use)[!colnames(df_use) %in% c(outcome_var, censorin
 saveRDS(cox_results, "univar_output/univar_cox_new.rds")
 ```
 
+# Univariate plots
+```{r}
+
+univar_cox <- readRDS("univar_output/univar_cox_new.rds")
+
+# COX
+bon_thresh <- 0.05/nrow(univar_cox)
+df_cox <- univar_cox 
+df_cox[, 2:6] <- sapply(df_cox[, 2:6], as.numeric)
+#readRDS("uni_cox_iter11.rds")
+df_cox$sigFlag <- NA
+df_cox$sigFlag <- ifelse(df_cox$p_value < bon_thresh, TRUE, FALSE)
+df_cox$color <- ifelse(df_cox$p_value < bon_thresh, "red", "black")
+#df_cox$p_value <- as.numeric(df_cox$p_value)
+# find rows that end with "_case" and append "med_"
+df_cox$variables <- ifelse(grepl("_case$", df_cox$variables), paste0("comorb_", df_cox$variables), df_cox$variables)
+
+df_cox$group <- str_extract(df_cox$variables, "^[^_]+(?=_)") 
+
+df_cox[df_cox$variables == "PRS", "group"] <- "bl"
+df_cox[df_cox$variables == "BMI", "group"] <- "comorb"
+
+df_cox$color <- case_when( 
+  df_cox$group == "be" ~ "darkblue", 
+  df_cox$group == "se" ~ "darkorange", 
+  df_cox$group == "env" ~ "purple",
+  df_cox$group == "bio" ~ "royalblue",
+  df_cox$group == "bl" ~ "deeppink",
+  df_cox$group == "fhx" ~ "deeppink",
+  df_cox$group == "med" ~ "red",
+  df_cox$group == "comorb" ~ "darkgreen")
+
+df_cox <- df_cox[order(df_cox$variables) , ]
+
+# make nicer labels for the plot
+new_names <- c("be_alcohol_freq.0.0_catdaily" = "Alcohol: Daily drinker",
+               "be_alcohol_freq.0.0_catmoderate" = "Alcohol: Moderate drinker",
+               "be_alcohol_freq.0.0_catsocial" = "Alcohol: Social drinker",
+               "be_days_weeks_mod_phys.0.0_cat3-5 days" = "Moderate exercise: 3-5 days a week",
+               "be_days_weeks_mod_phys.0.0_cat6-7 days" = "Moderate exercise: 6-7 days a week",
+               "be_days_weeks_vig_phys.0.0_cat3-5 days" = "Vigorous exercise: 3-5 days a week",
+               "be_days_weeks_vig_phys.0.0_cat6-7 days" = "Vigorous exercise: 6-7 days a week",
+               "be_days_weeks_walking.0.0_cat3-5 days" = "Walking: 3-5 days a week",
+               "be_days_weeks_walking.0.0_cat6-7 days" = "Walking: 6-7 days a week",
+               "be_diet_score" = "Diet score",
+               "be_pack_years_smoking.0.0" = "Pack years",
+               "be_sleep_score.0.0" = "Sleep score",
+               "be_smoking_status.0.0_catCurrent" = "Smoking status: Current",
+               "be_smoking_status.0.0_catFormer" = "Smoking status: Former",
+               "bio_alanine_aminotrans.0.0" = "Alanine aminotransferase",
+               "bio_albumin_ur.0.0" = "Urine albumin",
+               "bio_alkaline_phosphat.0.0" = "Alkaline phosphatase",
+               "bio_aspar_aminotrans.0.0" = "Aspartate aminotransferase",
+               "bio_basophil_count.0.0" = "Basophil count",
+               "bio_calcium.0.0" = "Calcium",
+               "bio_creatinine.0.0" = "Creatinine",
+               "bio_crp.0.0" = "C-reactive protein",
+               "bio_cystatin.0.0" = "Cystatin C",
+               "bio_eosinophil_count.0.0" = "Eosinophil count",
+               "bio_ggt.0.0" = "Gamma-glutamyl transferase",
+               "bio_gluc.0.0" = "Glucose",
+               "bio_haem_conc.0.0" = "Haemoglobin concentration",
+               "bio_hba1c.0.0" = "HbA1c",
+               "bio_hdlchol.0.0" = "HDL cholesterol",
+               "bio_igf.0.0" = "Insulin-like growth factor",
+               "bio_ldl.0.0" = "LDL cholesterol",
+               "bio_lipoA.0.0" = "Lipoprotein A",
+               "bio_lympho_count.0.0" = "Lymphocyte count",
+               "bio_monocyte_count.0.0" = "Monocyte count",
+               "bio_neutrophil_count.0.0" = "Neutrophil count",
+               "bio_phosphate.0.0" = "Phosphate",
+               "bio_platelet_count.0.0" = "Platelet count",
+               "bio_reticulocyte_count.0.0" = "Reticulocyte count",
+               "bio_shbg.0.0" = "Sex hormone-binding globulin",
+               "bio_sys_auto.0.0" = "Systolic blood pressure",
+               "bio_totbilirubin.0.0" = "Total bilirubin",
+               "bio_triglcy.0.0" = "Triglycerides",
+               "bio_urate.0.0" = "Urate",
+               "bio_urea.0.0" = "Urea",
+               "bio_vitd.0.0" = "Vitamin D",
+               "bl_BMI.0.0"  = "BMI",
+               "bl_ethnic_bckgd.0.0_cat" = "Ethnic background: Other",
+               "comorb_af_case" = "Comorbidity: AF", 
+               "comorb_ed_case" = "Comorbiditity: ED",
+               "comorb_migraine_case" = "Comorbidity: Migraine",
+               "comorb_ra_case" = "Comorbiditiy: RA",
+               "comorb_sle_case" = "Comorbidity: SLE",
+               "comorb_smi_case" = "Comorbidity: SMI",
+               "comorb_t1dm_case" = "Comorbidity: T1DM",
+               "comorb_t2dm_case" = "Comorbidity: T2DM",
+               "env_avg_noise_24_avg" = "Average 24hr noise exposure",
+               "env_exp_tobacco_home.0.0" = "Tobacco exposure at home",
+               "env_exp_tobacco_outside.0.0" = "Tobacco exposure outside",
+               "env_nitro_oxid_airpoll_2010.0.0" = "Nitrogen oxide air pollution",
+               "env_pm10_airpoll_2010.0.0" = "PM10 air pollution",
+               "env_pm2.5_airpoll_2010.0.0" = "PM2.5 air pollution",
+               "fhx_diabetes.0.0" = "Family history of diabetes",
+               "fhx_heartdisease.0.0" = "Family history of heart disease",
+               "fhx_stroke.0.0" = "Family history of stroke",
+               "med_antihyper" = "Medications: Antihypertensives",
+               "med_antipsych" = "Medications: Antipsychotics",
+               "med_steroids" = "Medications: Steroids",
+               "PRS" = "PRS",
+               "sse_highest_quali.0.0High" = "Highest education level: High",
+               "se_highest_quali.0.0Intermediate" = "Highest education level: Intermediate",
+               "se_highest_quali.0.0Other.professional" = "Highest education level: Other professional",
+               "se_town_dep_index.0.0" = "Townsend deprivation index")
+
+#rownames(df_cox) <- new_names
+df_cox$nice_names <- new_names
+
+df_cox <- df_cox %>%
+  mutate(logHR = log(HR)) %>%
+  mutate(lower_conf = exp(logHR - qnorm(0.975) * log(se_HR))) %>%
+  mutate(high_conf = exp(logHR + qnorm(0.975) * log(se_HR)))
+
+# Order the data frame based on the OR column
+df_plot_cox <- df_cox %>% arrange(desc(HR))
+
+# Create the plot with the x-axis based on the ordered data frame
+ggplot(data=df_plot_cox, aes(y=reorder(nice_names, HR), x=HR, xmin=lower_conf, xmax=high_conf)) +
+  geom_point(aes(color=sigFlag)) + 
+  geom_errorbarh(height=.1) +
+  scale_color_manual(values=c("black", "red")) + 
+  theme(plot.margin = unit(c(0.1, 0.5, 0.1, 0.5), "cm")) + 
+  labs(y = "Variables") +
+  guides(color = guide_legend(title = "Bonferroni threshold significant"))
+# + ggtitle("Univariate Cox Regression against CVD")
+```
+
 
 # Stability selection models
 
@@ -497,6 +628,39 @@ get_stability_plot("scm_results/model1_fulloutput_80traindata.rds", "CVD Variabl
 
 ```
 
+#### Refit
+
+```{r refit1}
+# Selected variables
+selected <- colnames(X)[selprop >= hat_params[2]]
+
+## Trying manual implementation of Refit
+
+#ids_test <- Resample(data = DLBCL.surv, tau = 1 - 0.8, family = "cox", resampling = "subsampling")
+#xtrain <- as.matrix(X)[-ids_test, , drop = FALSE]
+#ytrain <- DLBCL.surv[-ids_test, , drop = FALSE]
+#xtest <- as.matrix(X)[ids_test, , drop = FALSE]
+#ytest <- DLBCL.surv[ids_test, , drop = FALSE]
+
+
+GetFormula <- function(X_train, YVAR, selected, seed = 123, time = 3652.5) {
+  withr::local_seed(seed)
+  
+  ids <- c(
+    selected, 'bl_age_at_recr.0.0', 'bl_sex.0.0'
+  )
+  
+  ids <- gsub("`", "", ids)
+  colnames(X_train) <- gsub("`", "", colnames(X_train))
+  myformula <- stats::as.formula(paste0("ydata ~ ", paste(paste0("`", ids, "`"), collapse = " + ")))
+ 
+  print(paste0(YVAR, " ~ ", paste(paste0("`", ids, "`"), collapse = " + "))) 
+}
+
+refit_model <- 
+
+```
+
 ### Layer 2
 
 #### Stability selection
@@ -509,7 +673,7 @@ iter9 <- readRDS("data/dataset_sensitivity_imputed_encoded.Rds")
 
 #iter9 <- iter9[1:50000,]
 
-#model1_output <- readRDS("scm_results/model1_fulloutput_80traindata.rds")
+model1_output <- readRDS("scm_results/model1_fulloutput_80traindata.rds")
 model1_pi <- model1_output$pi
 
 
@@ -601,20 +765,6 @@ for(bio in names(Y_train)) {
   hat_params <- Argmax(out)
   print(hat_params)
   print(rowcount)
-  
-  # refit_formula <- GetFormula(X_train, bio, selected=names(SelectedVariables(out))[SelectedVariables(out)==1])
-  # refit_data <- cbind(X_train, ydata=Y_train[bio])
-  # model <- do.call(stats::lm, args = c(
-  #  list(
-  #    formula = refit_formula,
-  #    data = as.data.frame(refit_data)
-  #  )))
-  # 
-  # for(coef in names(model$coefficients)[2:(length(model$coefficients)-2)]) {
-  #   if(model$coefficients[coef] < 0) {
-  #     selprop[coef] <- -1*selprop[coef]
-  #   }
-  # }
 
   df[rowcount, ] <- selprop
   df_param[rowcount, ] <- hat_params
@@ -657,6 +807,45 @@ get_stability_plot("scm_results/model2_fulloutput_80traindata.rds", "Biological 
 #plot_grid(layer2_plot, p1,nrow = 2)
 
 ```
+
+#### Refitting Layer 2
+
+```{r refit2}
+model2_output <- readRDS("scm_results/model2_fulloutput_80traindata.rds")
+model2_pi <- model2_output$pi
+selected_outcomes_2 <- colnames(model2_output[,grep("^med", colnames(model2_output), value = TRUE)] )[colSums(abs(model2_output[,grep("^med", colnames(model2_output), value = TRUE)]) >= model2_pi) >= 1]
+
+for(bio in selected_outcomes) {
+  sel_cols <- colnames(model2_output)[model2_output[bio,] > model2_output[bio, "pi"]]
+  
+  refit_formula <- GetFormula(X_train, bio, sel_cols)
+  refit_data <- cbind(X_train, ydata=Y_train[bio])
+
+  if(nrow(unique(Y_train[bio])) == 2) {
+    model <- do.call(stats::glm, args = c(
+       list(
+         formula = refit_formula,
+         data = as.data.frame(refit_data),
+         family = stats::binomial(link = "logit")
+       )))
+    
+    # for(coef in names(model$coefficients)[2:(length(model$coefficients)-2)]) {
+    #   if(model$coefficients[coef] < 0) {
+    #     signs[rowcount-1,coef] <- model$coefficients[coef] > 0
+    #   }
+    # }
+  } else {
+    model <- do.call(stats::lm, args = c(
+       list(
+         formula = refit_formula,
+         data = as.data.frame(refit_data)
+       )))
+  }
+    print(refit_formula)
+    print(model$coefficients)
+}
+```
+
 
 ### Layer 3
 
@@ -775,6 +964,45 @@ saveRDS(df, "scm_results/model3_fulloutput_80traindata.rds")
 get_stability_plot("scm_results/model3_fulloutput_80traindata.rds", "Medication variables", flip = TRUE)
 
 ```
+
+#### Refitting Layer 3
+```{r refit3}
+model3_output <- readRDS("scm_results/model2_fulloutput_80traindata.rds")
+model3_pi <- model3_output$pithreshold
+selected_outcomes <- colnames(model3_output[,grep("^comorb|bl_BMI", colnames(model3_output), value = TRUE)] )[colSums(abs(model3_output[,grep("^comorb|bl_BMI", colnames(model3_output), value = TRUE)] >= model3_pi)) >= 1]
+
+for(med in selected_outcomes) {
+  sel_cols <- colnames(model3_output)[model3_output[med,] > model3_output[bio, "pi"]]
+  
+  refit_formula <- GetFormula(X_train, med, sel_cols)
+  refit_data <- cbind(X_train, ydata=Y_train[med])
+
+  if(nrow(unique(Y_train[med])) == 2) {
+    model <- do.call(stats::glm, args = c(
+       list(
+         formula = refit_formula,
+         data = as.data.frame(refit_data),
+         family = stats::binomial(link = "logit")
+       )))
+    
+    # for(coef in names(model$coefficients)[2:(length(model$coefficients)-2)]) {
+    #   if(model$coefficients[coef] < 0) {
+    #     signs[rowcount-1,coef] <- model$coefficients[coef] > 0
+    #   }
+    # }
+  } else {
+    model <- do.call(stats::lm, args = c(
+       list(
+         formula = refit_formula,
+         data = as.data.frame(refit_data)
+       )))
+  }
+    print(refit_formula)
+    print(model$coefficients)
+}
+```
+
+
 
 ### Layer 4
 
@@ -910,6 +1138,47 @@ saveRDS(df, "scm_results/model4_fulloutput_80traindata.rds")
 ```{r l4_plotting}
 
 get_stability_plot("scm_results/model4_fulloutput.rds", "Comorbidities", flip = TRUE)
+
+```
+
+#### Refitting Layer 4
+
+```{r l4_refit}
+model4_output <- readRDS("scm_results/model4_fulloutput.rds") # This is the model4_fulloutput_80traindata.rds
+model4_pi <- model4_output$pi # This is the pithreshold
+selected_outcomes <- colnames(model4_output[,grep("^be", colnames(model4_output), value = TRUE)] )[colSums(abs(model4_output[,grep("^be", colnames(model4_output), value = TRUE)]) >= model4_pi) >= 1]
+
+
+for(comorb in selected_outcomes) {
+  sel_cols <- colnames(model4_output)[model4_output[comorb] > model4_output[bio, "pi"]]
+  
+  refit_formula <- GetFormula(X_train, comorb, sel_cols)
+  refit_data <- cbind(X_train, ydata=Y_train[med])
+
+  if(nrow(unique(Y_train[comorb])) == 2) {
+    model <- do.call(stats::glm, args = c(
+       list(
+         formula = refit_formula,
+         data = as.data.frame(refit_data),
+         family = stats::binomial(link = "logit")
+       )))
+    
+    # for(coef in names(model$coefficients)[2:(length(model$coefficients)-2)]) {
+    #   if(model$coefficients[coef] < 0) {
+    #     signs[rowcount-1,coef] <- model$coefficients[coef] > 0
+    #   }
+    # }
+  } else {
+    model <- do.call(stats::lm, args = c(
+       list(
+         formula = refit_formula,
+         data = as.data.frame(refit_data)
+       )))
+  }
+    print(refit_formula)
+    print(model$coefficients)
+}
+
 
 ```
 
@@ -1059,5 +1328,241 @@ saveRDS(df, "scm_results/model5_fulloutput_80traindata.rds")
 ```{r l5_plotting}
 
 get_stability_plot("scm_results/model5_fulloutput.rds", "Behavioural variables", flip = TRUE)
+
+```
+
+#### Refitting Layer 5
+
+```{r l5_refit}
+model4_output <- readRDS("scm_results/model5_fulloutput.rds") # This is the model4_fulloutput_80traindata.rds
+model4_pi <- model4_output$pithreshold # This is the pithreshold
+selected_outcomes <- colnames(model4_output[,grep("^env|se|fhx|PRS", colnames(model4_output), value = TRUE)] )[colSums(abs(model4_output[,grep("^be", colnames(model4_output), value = TRUE)]) >= model4_pi) >= 1]
+
+
+for(be in selected_outcomes) {
+  sel_cols <- colnames(model4_output)[model4_output[be] > model4_output[bio, "pi"]]
+  
+  refit_formula <- GetFormula(X_train, be, sel_cols)
+  refit_data <- cbind(X_train, ydata=Y_train[med])
+
+  if(nrow(unique(Y_train[be])) == 2) {
+    model <- do.call(stats::glm, args = c(
+       list(
+         formula = refit_formula,
+         data = as.data.frame(refit_data),
+         family = stats::binomial(link = "logit")
+       )))
+    
+    # for(coef in names(model$coefficients)[2:(length(model$coefficients)-2)]) {
+    #   if(model$coefficients[coef] < 0) {
+    #     signs[rowcount-1,coef] <- model$coefficients[coef] > 0
+    #   }
+    # }
+  } else {
+    model <- do.call(stats::lm, args = c(
+       list(
+         formula = refit_formula,
+         data = as.data.frame(refit_data)
+       )))
+  }
+    print(refit_formula)
+    print(model$coefficients)
+}
+```
+
+# C-index calculation
+
+```{r cindex}
+GetFormula <- function(X_train, YVAR, selected, seed = 123, time = 3652.5) {
+  withr::local_seed(seed)
+  
+  ids <- c(
+    selected, 'bl_age_at_recr.0.0', 'bl_sex.0.0'
+  )
+  
+  ids <- gsub("`", "", ids)
+  colnames(X_train) <- gsub("`", "", colnames(X_train))
+  myformula <- stats::as.formula(paste0("ydata ~ ", paste(paste0("`", ids, "`"), collapse = " + ")))
+ 
+  print(paste0(YVAR, " ~ ", paste(paste0("`", ids, "`"), collapse = " + "))) 
+}
+
+full_out <- readRDS("files/scm_results/model5_fulloutput.rds")
+model1_out <- readRDS("files/scm_results/model1_fulloutput_80traindata.rds")
+model2_coef <- readRDS("files/scm_results/model2_coefficients.rds")
+model2_out <- readRDS("files/scm_results/model2_fulloutput_80traindata.rds")
+model2_selprop <- readRDS("files/scm_results/model2_selprop_80traindata.rds")
+model3_out <- readRDS("files/scm_results/model3_fulloutput_80traindata.rds")
+model5_out <- readRDS("files/scm_results/model5_fulloutput.rds")
+
+
+#cont_output <- c('be_diet_score', 'be_pack_years_smoking.0.0', 'be_sleep_score.0.0')
+cont_output <- c('bio_albumin_ur.0.0', 'bio_alkaline_phosphat.0.0', 'bio_cystatin.0.0',
+                 'bio_hba1c.0.0', 'bio_hdlchol.0.0', 'bio_ldl.0.0', 'bio_neutrophil_count.0.0',
+                 'bio_sys_auto.0.0')
+
+set.seed(234)
+idx_train <- sample(1:nrow(iter12), 0.8*nrow(iter12))
+X_train <- iter12[idx_train, ]
+#Y_train <- DLBCL.surv[idx_train, ]
+X_test <- iter12[-idx_train, ]
+  
+
+full_out <- model2_out
+for(i in 1:nrow(model2_out)) { #or full_out
+#for(i in 1:1) {
+
+  names <- colnames(full_out)[which(full_out[i,] >= full_out[i,]$pi)]
+  names <- setdiff(names, c('pi', 'lambda'))
+  
+  formula <- GetFormula(X_train, YVAR=rownames(full_out)[i], selected=names)
+  
+  if(rownames(full_out)[i] %in% cont_output) {
+     mymodel <- do.call(stats::lm, args = c(
+            list(
+              formula = formula,
+              data = as.data.frame(X_train)
+            )))
+
+
+  } else {
+         mymodel <- do.call(stats::glm, args = c(
+             list(
+               formula = formula,
+               data = as.data.frame(X_train),
+               family = stats::binomial(link = "logit")
+             )))
+  }
+  
+         print(formula)
+       print(mymodel$coefficients)
+}
+
+DanplanatoryPerformance <- function(X_train, Y_train, X_test = NULL, Y_test = NULL, seed = 123, stability, time = 3652.5) {
+  withr::local_seed(seed)
+
+  if (is.null(X_test)) {
+    set.seed(234)
+    idx_train <- sample(1:nrow(X), 0.8*nrow(X))
+    X_train <- X[idx_train, ]
+    Y_train <- DLBCL.surv[idx_train, ]
+    X_test <- X[-idx_train, ]
+    Y_test <- DLBCL.surv[-idx_train, ]
+  }
+  
+  if (is.null(stability)) {
+    selected <- rep(1, ncol(X_train))
+    names(selected) <- colnames(X_train)
+  } else {
+    selected <- SelectedVariables(stability)
+  }  
+  
+  ids <- c(
+    names(selected)[which(selected == 1)],
+    colnames(X_train)[!colnames(X_train) %in% names(selected)]
+  )
+      
+      
+  ids <- gsub("`", "", ids)
+  colnames(X) <- gsub("`", "", colnames(X_test))
+  myformula <- stats::as.formula(paste0("ydata ~ ", paste(paste0("`", ids, "`"), collapse = " + ")))
+  
+  
+  ydata <- survival::Surv(time = Y_train[, 1], event = Y_train[, 2])
+  
+  mymodel <- do.call(survival::coxph, args = c(
+    list(
+      formula = myformula,
+      data = as.data.frame(X_train)
+    )))
+  
+  predicted <- stats::predict(mymodel, newdata = as.data.frame(X_test), type = "lp")
+  survobject <- survival::Surv(time = Y_test[, 1], event = Y_test[, 2])
+  S0 <- summary(survival::survfit(mymodel), times = time, extend = TRUE)$surv
+  S <- S0^exp(predicted)
+  cstat <- survival::concordance(survobject ~ S)
+  
+  cindex <- cstat$concordance
+  lower <- cindex - 1.96 * sqrt(cstat$var)
+  upper <- cindex + 1.96 * sqrt(cstat$var)
+  
+  Beta <- matrix(NA, nrow = 1, ncol = length(stats::coef(mymodel)))
+  
+  return(list(concordance = cindex, lower = lower, upper = upper, Beta = list(Beta)))
+  
+}
+
+Dancremental <- function(X_train, Y_train, X_test = NULL, Y_test = NULL, seed = 123, stability, time = 3652.5) {
+  n_predictors <- sum(SelectedVariables(stability))
+  n_predictors <- n_predictors + sum(!colnames(X_train) %in% names(SelectedVariables(stability)))
+  
+  n_predictors <- min(n_predictors, ncol(X_train))
+  
+  myorder <- names(SelectionProportions(stability))[sort.list(SelectionProportions(stability), decreasing = TRUE)]
+  
+  myorder <- c(colnames(X_train)[!colnames(X_train) %in% names(SelectedVariables(stability))], myorder)
+  
+  Beta <- list()
+  concordance <- lower <- upper <- NULL
+  
+  for (k in 1:n_predictors) {
+    perf <- DanplanatoryPerformance(X_train = X_train[, myorder[1:k], drop = FALSE], Y_train = Y_train, X_test = X_test, Y_test = Y_test, stability = NULL)
+    
+    concordance <- c(concordance, perf$concordance)
+    lower <- c(lower, perf$lower)
+    upper <- c(upper, perf$upper)
+    Beta <- c(Beta, list(perf$Beta))
+  }
+  
+  out <- list(concordance = concordance, lower = lower, upper = upper)
+  
+  mynames <- myorder[1:n_predictors]
+  out <- c(out, names = list(mynames))
+  
+  mystable <- ifelse(myorder[1:n_predictors] %in% myorder[sum(!colnames(X_train) %in% names(SelectedVariables(stability)))+1:sum(SelectedVariables(stability))],
+  yes = 1, no = 0)
+  
+  names(mystable) <- mynames
+  out <- c(out, stable = list(mystable))
+  
+  class(out) <- "incremental"
+  
+  return(out)
+}
+
+X_train <- X_train %>% dplyr::select(-c('outcome_tte', 'outcome_incident_case'))
+X_test <- X_test %>% dplyr::select(-c('outcome_tte', 'outcome_incident_case'))
+
+incr <- Dancremental(X_train = X_train, Y_train = Y_train, X_test = X_test, Y_test = Y_test, stability=out)
+df <- data.frame(cbind(stable=incr$stable, concordance=incr$concordance, lower=incr$lower, upper=incr$upper, names=incr$names))
+
+
+# Create a new dataframe with an additional column 'order' representing the order of variable inclusion
+df$order <- seq_along(df$names)
+df$concordance <- round(as.numeric(df$concordance), 4)
+df$upper <- as.numeric(df$upper)
+df$lower <- as.numeric(df$lower)
+
+
+# Create the plot
+P <-ggplot(data = df, aes(x = order, y = concordance, ymin = lower, ymax = upper, group = 1)) +
+  geom_line(color = "blue") +
+  geom_point(color = "red", size = 3) +
+  geom_errorbar(width = 0.2, color = "black") +
+  geom_segment(aes(x = max(df$order), xend = 0, y = max(df$concordance), yend = max(df$concordance)),
+               linetype = "dotted", color = "red") +
+  annotate("text", x = 0.5, y = max(df$concordance), label = paste0("Final c-index ≈ ", max(df$concordance)), hjust = 0, vjust = -0.5) +
+  scale_x_continuous(breaks = df$order, labels = df$names, expand = c(0, 0.05)) +
+  scale_y_continuous(breaks = seq(round(min(df$lower), 2), round(max(df$upper), 2), by = 0.01)) + 
+  labs(x = "Included Variables", y = "c-index", title = "Cox Model Performance with Successive Variable Inclusion") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+        plot.title = element_text(hjust = 0.5),
+        panel.grid.major.x = element_line(color = "grey90"), # Adjust the color of the major gridlines
+        panel.grid.minor.x = element_blank(),
+        axis.title.y = element_text(margin=margin(r=10))) # Remove the minor gridlines
+
+print(P)
+
 
 ```
