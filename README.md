@@ -1,5 +1,5 @@
 # Multi-layer modeling for CVD risk prediction - UK BioBank Study
-Translational Data Science Project (Group 1)
+Translational Data Science Project
 
 ## Project description:
 - Cardiovascular Disease (CVD) represents a significant and prevalent health challenge worldwide.
