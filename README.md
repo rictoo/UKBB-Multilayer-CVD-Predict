@@ -1,7 +1,7 @@
 # Multi-layer modeling for CVD risk prediction - UK BioBank Study
 Translational Data Science Project (Group 1)
 
-## Project description -  
+## Project description:
 - Cardiovascular Disease (CVD) represents a significant and prevalent health challenge worldwide.
 - Various environmental factors havebeen recognised as risk factors for CVD but **causal links** (direct or indirect, mediated through biological variables) between such factors and CVD outcomes are difficult to establish in conventional study formats.
 - Data was collected from the UK Biobank, a large prospective cohort study. This study was conducted on 240,103 participants without
@@ -16,7 +16,7 @@ potential causative pathways between environmental, socio-economic, behavioural,
 ![Figure 2](https://github.com/rictoo/tds-proj/assets/70545953/da28cb67-9417-4b41-bc7b-d48305f2fa85)
 **Figure 2: Cox Model Performance with Successive Variable Inclusion**
 
-## Code and analytical pipeline
+## Code and analytical pipeline:
 
 This project repository contains the analytical pipeline to generate the statistical inferences in the research project detailed above.
 
