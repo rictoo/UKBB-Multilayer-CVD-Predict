@@ -3,7 +3,7 @@ Translational Data Science Project
 
 ## Project description:
 - Cardiovascular Disease (CVD) represents a significant and prevalent health challenge worldwide.
-- Various environmental factors havebeen recognised as risk factors for CVD but **causal links** (direct or indirect, mediated through biological variables) between such factors and CVD outcomes are difficult to establish in conventional study formats.
+- Various environmental factors have been recognised as risk factors for CVD but **causal links** (direct or indirect, mediated through biological variables) between such factors and CVD outcomes are difficult to establish in conventional study formats.
 - Data was collected from the UK Biobank, a large prospective cohort study. This study was conducted on 240,103 participants without
 a history of CVD.
 - Structural Causal Modeling with five defined hierarchical layers was utilised within a LASSO stability selection framework to identify
